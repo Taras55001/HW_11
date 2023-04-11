@@ -11,34 +11,36 @@ input_line = "-" * 50 + "\n"\
 
 class AddressBook(UserDict):
     def add_record(self, record) -> str:
-        self.data[record.name.value] = record.phones
-        return f'Contact {record.name.value} create successful'
+        self.data[record.name.value] = record
+        return f'Contact {record.name} create successful'
 
     def add_phone(self, name, phone) -> str:
         if phone not in self.data[name]:
-            self.data[name].append(phone)
+            self.data[name].phones.append(phone)
             return f'Phone {phone} added to contact {name} numbers'
-        return f'Contact {name} whith phone {phone} are alredy exist'
+        return f'Contact {name} with phone {phone} are already exist'
 
     def change_phone(self, name, phone, new_phone):
         if phone in self.data[name]:
-            self.data[name].remove(phone)
-        return self.data[name].append(new_phone)
+            self.data[name].phones.remove(phone)
+        return self.data[name].phones.append(new_phone)
 
     def delete_record(self, name) -> str:
         self.data.pop(name)
         return f'Contact {name} deleted successful'
 
-    def iterator(self, start, stop):
-        key = islice(self.data, start, stop)
+    def iterator(self, start=None, stop=None):
+        keys = islice(self.data.keys(), start, stop)
         result = '\n'.join(
-            f'{i}: {", ".join(p.value for p in self.data.get(i))}' for i in key)
+            f'{i}: +{", +".join(p.value for p in self.data.get(i).phones)}, birthday {self.data.get(i).birthday}' for i in keys)
+
         yield result
 
 
 class Field:
     def __init__(self, value):
-        self._value = value
+        self._value = None
+        self.value = value
 
     @property
     def value(self):
@@ -46,45 +48,51 @@ class Field:
 
     @value.setter
     def value(self, value):
-        if len(value) < 2:
-            raise ValueError("Not enough symbols")
-        self._value = value
+        try:
+            if len(value) > 2:
+                self._value = value
+        except ValueError:
+            raise ValueError(
+                "Value must be a string of length of at least 2")
 
     def __repr__(self) -> str:
-        return self.value
+        return self._value
+
+    def __str__(self) -> str:
+        return str(self._value)
 
 
 class Birthday:
     def __init__(self, value="13 October 1990"):
-        self.value = datetime.strptime(value, '%d %B %Y').date()
+        self._value = None
+        self.value = value
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    @value.setter
+    def value(self, value):
+        try:
+            self._value = datetime.strptime(value, '%d-%m-%Y').date()
+        except ValueError:
+            raise ValueError(
+                "Invalid date format. Please use format: DD-MM-YYYY")
 
     def __str__(self) -> str:
-        return self.value.strftime('%d %B %Y')
-
-    def __repr__(self) -> str:
-        return self.value
-
-    # @property
-    # def value(self):
-    #     return self._value
-
-    # @value.setter
-    # def value(self, value):
-    #     if not re.match(r'^\d{1,2}\s[a-zA-Z]+\s\d{4}$', value):
-    #         print("Date have to be 'DD Month YYYY'")
-    #     else:
-    #         self.value = datetime.strptime(value, '%d %B %Y').date()
-    #         print('12')
+        return self._value.strftime('%d %B %Y')
 
 
 class Name(Field):
 
     @Field.value.setter
     def value(self, value):
-        if not value.isalpha():
+        try:
+            if value.isalpha():
+                super(Name, Name).value.__set__(self, value)
+        except ValueError:
             raise ValueError(
                 "Value must be a string of alphabetical characters")
-        self.value = value
 
 
 class Record:
@@ -92,15 +100,13 @@ class Record:
         self.name = name
         self.phones = [phone] if phone else []
         self.birthday = birthday
-        # print(self.birthday)
-        # print(self.name, name)
 
     def add_phone(self, phone):
         self.phones.append(self.phone)
 
     def change_phone(self, old_phone, new_phone) -> str:
-        if old_phone in book.data[self.name.value]:
-            book.change_phone(self.name.value, old_phone, new_phone)
+        if old_phone in book.data[self.name]:
+            book.change_phone(self.name, old_phone, new_phone)
             return f'Phone {old_phone} change to {new_phone}'
         return f'No phone {old_phone}'
 
@@ -111,17 +117,20 @@ class Record:
         if self.birthday:
             today = datetime.now().date()
             target_day = self.birthday.value.replace(year=today.year)
+            if target_day < today:
+                target_day = self.birthday.value.replace(year=today.year+1)
             difference = (target_day - today).days
             return difference
 
 
 class Phone(Field):
     @Field.value.setter
-    def phone(self, value):
-        if not re.match(r'^\+\d{12}$', value):
-            print("Phone must be in +123456789876 format")
-        else:
-            self.value = value
+    def value(self, value):
+        try:
+            if re.match(r'^\d{12}$', value):
+                super(Phone, Phone).value.__set__(self, value)
+        except ValueError:
+            raise ValueError("Phone must be in 123456789876 format")
 
     def __eq__(self, __value: object) -> bool:
         return self.value == __value.phone
@@ -136,15 +145,14 @@ def input_error(func):
             return func(*args, **kwargs)
         except KeyError:
             print("Контакт не знайдено")
-        except ValueError:
-            print("Номер телефону повинен містити тільки цифри")
+        except ValueError as error:
+            print(error)
         except TypeError:
             print("Недостатньо аргументів")
     return wrapper
 
 
-@ input_error
-def iter_book(command) -> str:
+def iter_book(command=None):
     stop = int(input("Input step "))
     start = 0
     step = stop
@@ -161,20 +169,30 @@ def iter_book(command) -> str:
 
 @ input_error
 def add_record(command):
-    spliting_arguments = command.strip().split()
-    if len(spliting_arguments) == 3:
-        key, name, phone = spliting_arguments
-        rec = book.get(name)
+    splitting_arguments = command.strip().split()
+    if len(splitting_arguments) >= 2:
+        key, name, phone, birthday = splitting_arguments
+        rec = book.data.get(name)
         if rec:
             rec = book.add_phone
             return rec(name, Phone(phone))
+        contact_name = Name(name)
+        contact_phone = Phone(phone)
+        rec = Record(contact_name, contact_phone, Birthday(birthday))
+        if contact_name:
+            # for Name(None) does not create dict
+            result = book.add_record(rec)
+            rec.days_to_birthday()
+            return result
 
-        rec = Record(Name(name), Phone(phone),
-                     Birthday("13 October 1990"))
-        # дата за замовченням доки не розберусь з сеттерром
-        result = book.add_record(rec)
-        rec.days_to_birthday()
-        return result
+
+@ input_error
+def birthday(command):
+    splitting_arguments = command.strip().split()
+    key, name = splitting_arguments
+    record = book.data.get(name)
+    print(record.birthday)
+    return record.days_to_birthday()
 
 
 @ input_error
@@ -206,7 +224,7 @@ def get_func(command):
     raise KeyError("This command doesn't exist")
 
 
-command_dict = {"hello": "How can I help you?", "add": add_record, "change": change_record, "delete": delete,
+command_dict = {"hello": "How can I help you?", "add": add_record, "birthday": birthday, "change": change_record, "delete": delete,
                 "show": iter_book, ("good", "bye", "close", "exit"): "Good bye!"}
 
 
@@ -215,20 +233,14 @@ def main():
     while True:
 
         command = input(input_line).lower()
-        # command = "add test +1234567898"
+        command = "add test 123456789876 10-02-1990"  # test func
         func = get_func(command)
         print(func)
+        iter_book()  # test func
+        print(birthday("birthday test"))  # test func
         if command.split()[0] in ["good", "bye", "close", "exit"]:
             break
 
 
 if __name__ == '__main__':
     main()
-
-
-...  # AddressBook реалізує метод iterator, який повертає генератор за записами AddressBook і за одну ітерацію повертає уявлення для N записів.
-...  # Клас Record приймає ще один додатковий(опціональний) аргумент класу Birthday
-...  # Клас Record реалізує метод days_to_birthday, який повертає кількість днів до наступного дня народження контакту, якщо день народження заданий.
-# setter та getter логіку для атрибутів value спадкоємців Field.
-# Перевірку на коректність веденого номера телефону setter для value класу Phone.
-# Перевірку на коректність веденого дня народження setter для value класу Birthday.
