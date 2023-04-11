@@ -191,8 +191,7 @@ def birthday(command):
     splitting_arguments = command.strip().split()
     key, name = splitting_arguments
     record = book.data.get(name)
-    print(record.birthday)
-    return record.days_to_birthday()
+    return f"days to birthday {name} - {record.days_to_birthday()}"
 
 
 @ input_error
