@@ -11,19 +11,10 @@ input_line = "-" * 50 + "\n"\
 
 class AddressBook(UserDict):
     def add_record(self, record) -> str:
-        self.data[record.name.value] = record
-        return f'Contact {record.name} create successful'
-
-    def add_phone(self, name, phone) -> str:
-        if phone not in self.data[name]:
-            self.data[name].phones.append(phone)
-            return f'Phone {phone} added to contact {name} numbers'
-        return f'Contact {name} with phone {phone} are already exist'
-
-    def change_phone(self, name, phone, new_phone):
-        if phone in self.data[name]:
-            self.data[name].phones.remove(phone)
-        return self.data[name].phones.append(new_phone)
+        if record.name.value not in self.data.keys():
+            self.data[record.name.value] = record
+            return f'Contact {record.name} create successful'
+        return f'Contact {record.name} already exist'
 
     def delete_record(self, name) -> str:
         self.data.pop(name)
@@ -102,13 +93,15 @@ class Record:
         self.birthday = birthday
 
     def add_phone(self, phone):
-        self.phones.append(self.phone)
+        self.phones.append(phone)
+        return f'{phone} added to contact {self.name}'
 
     def change_phone(self, old_phone, new_phone) -> str:
-        if old_phone in book.data[self.name]:
-            book.change_phone(self.name, old_phone, new_phone)
-            return f'Phone {old_phone} change to {new_phone}'
-        return f'No phone {old_phone}'
+        if old_phone not in self.phones:
+            self.phones.remove(old_phone)
+            self.phones.append(new_phone)
+            return f'Phone {old_phone} changed to {new_phone}'
+        return f'Phone {old_phone} not in {self.name} phones'
 
     def delet_phone(self, phone):
         self.phones.remove(phone)
@@ -132,8 +125,8 @@ class Phone(Field):
         except ValueError:
             raise ValueError("Phone must be in 123456789876 format")
 
-    def __eq__(self, __value: object) -> bool:
-        return self.value == __value.phone
+    def __eq__(self, __obj: object) -> bool:
+        return self.value == __obj.value
 
 
 book = AddressBook()
@@ -172,17 +165,14 @@ def add_record(command):
     splitting_arguments = command.strip().split()
     if len(splitting_arguments) >= 2:
         key, name, phone, birthday = splitting_arguments
-        rec = book.data.get(name)
-        if rec:
-            rec = book.add_phone
-            return rec(name, Phone(phone))
         contact_name = Name(name)
         contact_phone = Phone(phone)
         rec = Record(contact_name, contact_phone, Birthday(birthday))
+        if name in book.data.keys() and contact_phone not in book.data.get(name).phones:
+            return book.data.get(name).add_phone(contact_phone)
         if contact_name:
             # for Name(None) does not create dict
             result = book.add_record(rec)
-            rec.days_to_birthday()
             return result
 
 
@@ -199,8 +189,8 @@ def change_record(command):
     arguments = command.strip().split()
     if len(arguments) == 4:
         key, name, phone, new_phone = arguments
-        record = Record(Name(name))
-        return record.change_phone(Phone(phone), Phone(new_phone))
+        if name in book.data.keys() and Phone(phone) in book.data.get(name).phones:
+            return book.data.get(name).change_phone(Phone(phone), Phone(new_phone))
 
 
 @ input_error
